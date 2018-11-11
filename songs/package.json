@@ -1,0 +1,12 @@
+{
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "bulkindex": "node bulkindex.js"
+  },
+  "dependencies": {
+    "lodash": "4.17.11",
+    "multi-progress": "2.0.0",
+    "node-fetch": "2.2.1"
+  }
+}
