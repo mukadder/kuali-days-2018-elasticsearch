@@ -1,0 +1,48 @@
+{
+  "mappings": {
+    "_doc": {
+      "properties": {
+        "artist": {
+          "type": "text",
+          "fields": {
+            "raw": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "tags": {
+          "type": "text",
+          "fields": {
+            "raw": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "title": {
+          "type": "text",
+          "fields": {
+            "raw": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "timestamp": {
+          "type": "date",
+          "format": "yyyy-MM-dd HH:mm:ss.SSSSSS||yyyy-MM-dd HH:mm:ss"
+        },
+        "track_id": {
+          "type": "keyword"
+        }
+      }
+    }
+  },
+  "settings" : {
+      "index" : {
+          "number_of_shards" : 5,
+          "number_of_replicas" : 0
+      }
+  }
+}

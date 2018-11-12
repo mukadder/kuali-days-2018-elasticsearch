@@ -1,37 +1,79 @@
 "use strict"
 
+const createIndexJson = require('./createindex.json')
+const elasticsearch = require('elasticsearch')
+const etl = require('etl')
 const fs = require('fs')
 const path = require('path')
-const MultiProgress = require('multi-progress')
-const { fork } = require('child_process')
+const ProgressBar = require('progress')
+const unzipper = require('unzipper')
+const { omit } = require('lodash')
 
-const ROOT_PATH = process.env.ROOT || path.resolve(__dirname, 'lastfm_train')
+const ARCHIVE_PATH = path.resolve(__dirname, process.env.ARCHIVE || 'lastfm_train.zip')
+const BULK_INDEX_LIMIT = process.env.BULK_INDEX_LIMIT || 15000
+const CONCURRENCY = process.env.CONCURRENCY || 5
+const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL || 'http://127.0.0.1:9200'
+const INDEX_NAME = process.env.INDEX || 'songs'
+const LOG_LEVEL = process.env.LOG_LEVEL || 'info'
+const MAX_RETRIES = process.env.MAX_RETRIES || 3
+const TYPE_NAME = process.env.TYPE || '_doc'
 
-const multi = new MultiProgress(process.stdout)
-const progressBars = []
-
-const childArgs = [ '--single_threaded', '--max-old-space-size=64' ]
-
-const INITIAL_DIRS = fs.readdirSync(ROOT_PATH)
-INITIAL_DIRS.forEach(dir => {
-  let bar
-  const child = fork('bulkindex.js', [dir], { execArgv: childArgs })
-  child.on('error', err => console.error(err))
-  child.on('message', ({ done, total }) => {
-    if (total) {
-      const template = `  Building bulkIndex${dir}.json :bar :percent  [:current / :total]`
-      bar = multi.newBar(template, { curr: 0, total, width: 80 })
-      progressBars.push(bar)
-    }
-    else if (done) {
-      bar.tick(done)
-    }
-  })
+const esClient = new elasticsearch.Client({
+  host: ELASTICSEARCH_URL,
+  log: LOG_LEVEL
 })
 
-const progressInterval = setInterval(() => {
-  if (progressBars.length !== 0 && progressBars.every(bar => bar.complete)) {
-    console.log('All songs parsed into bulkindex statements')
-    clearInterval(progressInterval)
+const template = 'Indexing songs... :bar :percent  [:current / :total] :elapseds'
+const progressBar = new ProgressBar(template, { 
+  action: 'Reading archive', 
+  curr: 0, 
+  total: 839122, 
+  width: 50 
+})
+
+let total = 0
+
+const handleZipEntry = async entry => {
+  if (entry.type === 'File') {
+    total++
+    progressBar.tick(1)
+    const songData = JSON.parse(await entry.buffer())
+    return omit(songData, ['similars'])
+  } else {
+    entry.autodrain()
   }
-}, 3000)
+}
+
+const initIndex = async () => {
+  if (await esClient.indices.exists({ index: INDEX_NAME })) {
+    const { acknowledged } = await esClient.indices.delete({ index: INDEX_NAME })
+    if (acknowledged) {
+      console.log(`Deleted existing ${INDEX_NAME} index`)
+    }
+  }
+  const res = await esClient.indices.create({ index: INDEX_NAME, body: createIndexJson })
+  if (res.acknowledged) {
+    console.log(`Created new ${INDEX_NAME} index`)
+  }
+}
+
+const logErrors = err => console.error(err)
+
+;(async () => {
+  await initIndex()
+
+  fs.createReadStream(ARCHIVE_PATH)
+    .pipe(unzipper.Parse())
+    .pipe(etl.map(handleZipEntry))
+    .pipe(etl.collect(BULK_INDEX_LIMIT))
+    .pipe(etl.elastic.index(esClient, INDEX_NAME, TYPE_NAME, { 
+      concurrency: CONCURRENCY,
+      debug: true,
+      maxRetries: MAX_RETRIES,
+      pushErrors: true
+    }))
+    .pipe(etl.map(logErrors))
+    .promise()
+    .then(() => console.log(`Finished indexing ${total} documents into ${INDEX_NAME}`))
+    .catch(err => console.error(`Failed to index documents into ${INDEX_NAME}`, err))
+})()
