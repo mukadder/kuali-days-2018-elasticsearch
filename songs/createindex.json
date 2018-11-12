@@ -12,11 +12,19 @@
           }
         },
         "tags": {
-          "type": "text",
-          "fields": {
-            "raw": {
-              "type": "keyword",
-              "ignore_above": 256
+          "type": "nested",
+          "properties": {
+            "tag": {
+              "type": "text",
+              "fields": {
+                "raw": {
+                  "type": "keyword",
+                  "ignore_above": 256
+                }
+              }
+            },
+            "frequency": {
+              "type": "integer"
             }
           }
         },

@@ -116,8 +116,13 @@ POST songs/_search
       ],
       "filter": [
         {
-          "term": {
-            "tags": "jazz"
+          "nested": {
+            "path": "tags",
+            "query": {
+              "term": {
+                "tags.tag.raw": "jazz"
+              }
+            }
           }
         }
       ]

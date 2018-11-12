@@ -16,11 +16,13 @@ const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL || 'http://127.0.0.1:920
 const INDEX_NAME = process.env.INDEX || 'songs'
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info'
 const MAX_RETRIES = process.env.MAX_RETRIES || 3
+const TIMEOUT = process.env.TIMEOUT || 60000
 const TYPE_NAME = process.env.TYPE || '_doc'
 
 const esClient = new elasticsearch.Client({
   host: ELASTICSEARCH_URL,
-  log: LOG_LEVEL
+  log: LOG_LEVEL,
+  requestTimeout: TIMEOUT
 })
 
 const template = 'Indexing songs... :bar :percent  [:current / :total] :elapseds'
@@ -37,8 +39,10 @@ const handleZipEntry = async entry => {
   if (entry.type === 'File') {
     total++
     progressBar.tick(1)
-    const songData = JSON.parse(await entry.buffer())
-    return omit(songData, ['similars'])
+    const songData = omit(JSON.parse(await entry.buffer()), ['similars'])
+    songData.tags = songData.tags.map(tag => 
+      ({ tag: tag[0], frequency: parseInt(tag[1], 10) }))
+    return songData
   } else {
     entry.autodrain()
   }
